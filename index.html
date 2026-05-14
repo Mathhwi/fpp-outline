@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>FPP Project — Builder / Runner Viewer</title>
+<style>
+  :root {
+    --bg: #fafafa; --paper: #fff; --line: #e5e5e5; --line-strong: #c8c8c8;
+    --ink: #111; --muted: #666; --accent: #1f6feb;
+    --builder: #c75450; --runner: #4a78c8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans CJK KR", "Malgun Gothic", "맑은 고딕", sans-serif;
+         color: var(--ink); background: var(--bg); }
+
+  header.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center;
+                  justify-content: space-between; padding: 10px 18px; background: var(--paper);
+                  border-bottom: 1px solid var(--line); }
+  header.topbar h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  header.topbar .actions button { background: #fff; border: 1px solid var(--line-strong);
+                                   padding: 6px 10px; font-size: 12px; cursor: pointer;
+                                   border-radius: 4px; margin-left: 6px; }
+  header.topbar .actions button:hover { background: #f0f0f0; }
+
+  .tabs { display: flex; gap: 0; padding: 0 18px; background: var(--paper);
+          border-bottom: 1px solid var(--line); }
+  .tab-btn { background: none; border: 0; border-bottom: 2px solid transparent;
+             padding: 12px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+             color: var(--muted); font-family: inherit; }
+  .tab-btn:hover { color: var(--ink); }
+  .tab-btn.active.builder { color: var(--builder); border-bottom-color: var(--builder); }
+  .tab-btn.active.runner  { color: var(--runner);  border-bottom-color: var(--runner); }
+  .tab-btn .badge { display: inline-block; background: #f0a020; color: #fff;
+                    border-radius: 9px; padding: 1px 7px; font-size: 10px; margin-left: 6px; }
+
+  main { display: grid; grid-template-columns: 1fr 380px; min-height: calc(100vh - 90px);
+         transition: grid-template-columns 0.2s ease; }
+  main.panel-collapsed { grid-template-columns: 1fr 0; }
+  .canvas-wrap { padding: 16px; overflow: auto; }
+  .diagram-canvas svg { max-width: 100%; height: auto; background: var(--paper);
+                         border: 1px solid var(--line); border-radius: 6px; }
+  .diagram-canvas[hidden] { display: none; }
+
+  aside.panel { background: var(--paper); border-left: 1px solid var(--line);
+                display: flex; flex-direction: column;
+                overflow: hidden; transition: width 0.2s ease; }
+  main.panel-collapsed aside.panel { display: none; }
+
+  .reopen-handle { position: fixed; top: 130px; right: 0; z-index: 9;
+                   background: var(--paper); border: 1px solid var(--line-strong);
+                   border-right: 0; border-radius: 6px 0 0 6px;
+                   padding: 10px 8px; font-size: 13px; cursor: pointer;
+                   color: #333; box-shadow: -1px 1px 4px rgba(0,0,0,0.04);
+                   display: none; }
+  main.panel-collapsed ~ .reopen-handle { display: block; }
+  .reopen-handle:hover { background: #f0f0f0; }
+
+  aside.panel .panel-header { padding: 14px 16px; border-bottom: 1px solid var(--line);
+                              display: flex; align-items: flex-start;
+                              justify-content: space-between; gap: 8px; }
+  aside.panel .panel-header .name { font-size: 14px; font-weight: 600; line-height: 1.4; }
+  aside.panel .panel-header .id { color: var(--muted); font-size: 11px;
+                                   font-family: ui-monospace, monospace; margin-top: 2px; }
+  aside.panel .panel-header .diagram-tag { font-size: 10px; padding: 2px 6px;
+                                            border-radius: 3px; margin-left: 6px;
+                                            color: #fff; font-weight: 600; }
+  aside.panel .panel-header .diagram-tag.builder { background: var(--builder); }
+  aside.panel .panel-header .diagram-tag.runner  { background: var(--runner); }
+  aside.panel .panel-header .close { background: none; border: 0; font-size: 18px;
+                                      cursor: pointer; color: var(--muted); padding: 0 2px; }
+  aside.panel .panel-body { padding: 12px 16px; overflow: auto; flex: 1; }
+  aside.panel .section { margin-bottom: 14px; }
+  aside.panel .section label { display: flex; justify-content: space-between;
+                                align-items: baseline; font-size: 12px;
+                                font-weight: 600; color: #333; margin-bottom: 4px; }
+  aside.panel .section label .count { font-weight: 400; color: var(--muted); font-size: 11px; }
+  aside.panel textarea { width: 100%; min-height: 110px; padding: 8px;
+                         border: 1px solid var(--line-strong); border-radius: 4px;
+                         font-family: inherit; font-size: 13px; resize: vertical; line-height: 1.5; }
+  aside.panel .panel-body { display: flex; flex-direction: column; }
+  aside.panel .section.memo-only { flex: 1; display: flex; flex-direction: column; }
+  aside.panel .section.memo-only textarea { flex: 1; min-height: 240px; resize: none; }
+  aside.panel .memo-links { margin-top: 8px; padding: 6px 8px; border: 1px dashed var(--line);
+                            border-radius: 4px; font-size: 12px; max-height: 100px; overflow: auto; }
+  aside.panel .memo-links.empty { display: none; }
+  aside.panel .memo-links .label { color: var(--muted); font-size: 11px;
+                                    font-weight: 600; margin-bottom: 4px; }
+  aside.panel .memo-links a { display: block; color: var(--accent); text-decoration: none;
+                               word-break: break-all; padding: 1px 0; }
+  aside.panel .memo-links a:hover { text-decoration: underline; }
+  aside.panel textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px;
+                                 border-color: var(--accent); }
+  aside.panel .save-state { font-size: 11px; color: var(--muted); padding: 0 16px 12px; }
+  aside.panel .empty { padding: 40px 18px; color: var(--muted); text-align: center; font-size: 13px; }
+
+  aside.panel .all-notes { border-top: 1px solid var(--line); padding: 10px 16px;
+                            max-height: 240px; overflow: auto; }
+  aside.panel .all-notes h3 { font-size: 12px; font-weight: 600; margin: 4px 0 8px; color: #333; }
+  aside.panel .all-notes h3 .filter { font-weight: 400; color: var(--muted); }
+  aside.panel .all-notes ul { list-style: none; padding: 0; margin: 0; }
+  aside.panel .all-notes li { padding: 5px 6px; font-size: 12px; cursor: pointer;
+                                border-radius: 3px; display: flex; justify-content: space-between;
+                                gap: 6px; align-items: center; }
+  aside.panel .all-notes li:hover { background: #f3f3f3; }
+  aside.panel .all-notes li .tag { color: var(--muted); font-size: 10px; }
+  aside.panel .all-notes li .diag {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    color: #fff; font-weight: 600; margin-right: 4px;
+  }
+  aside.panel .all-notes li .diag.builder { background: var(--builder); }
+  aside.panel .all-notes li .diag.runner  { background: var(--runner); }
+
+  /* SVG hit overlay */
+  .node-hit { fill: transparent; stroke: transparent; cursor: pointer;
+              pointer-events: all; transition: fill 0.12s, stroke 0.12s;  }
+  .node-hit:hover { fill: rgba(31,111,235,0.06); stroke: rgba(31,111,235,0.5);
+                     stroke-width: 1.2; stroke-dasharray: 3 2; }
+  .node-hit.selected { fill: rgba(31,111,235,0.10); stroke: rgba(31,111,235,0.9);
+                        stroke-width: 1.8; stroke-dasharray: none; }
+  .node-hit.has-notes { fill: rgba(255,180,40,0.06); stroke: rgba(220,150,30,0.7);
+                         stroke-width: 1.2; stroke-dasharray: 4 2; }
+  .node-hit.has-notes.selected { fill: rgba(31,111,235,0.10); stroke: rgba(31,111,235,0.9);
+                                  stroke-width: 1.8; stroke-dasharray: none; }
+  .note-dot { fill: #f0a020; stroke: #fff; stroke-width: 1; pointer-events: none; }
+
+  footer.legend { display: flex; gap: 18px; padding: 10px 18px; background: var(--paper);
+                  border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  footer.legend .item { display: flex; align-items: center; gap: 6px; }
+  footer.legend .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  footer.legend .sw-noted    { background: rgba(255,180,40,0.18); border: 1.5px dashed rgba(220,150,30,0.7); }
+  footer.legend .sw-selected { background: rgba(31,111,235,0.18); border: 1.5px solid rgba(31,111,235,0.9); }
+  footer.legend .sw-hover    { background: rgba(31,111,235,0.08); border: 1.5px dashed rgba(31,111,235,0.5); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <h1>FPP Project — Builder / Runner</h1>
+  <div class="actions">
+    <button id="downloadHtmlBtn" title="현재 노트를 HTML 파일에 박아 다운로드 (공유용)">📦 HTML 로 묶어 저장</button>
+    <button id="exportBtn">노트 JSON 내보내기</button>
+    <button id="importBtn">불러오기</button>
+    <input type="file" id="importFile" accept="application/json" hidden>
+    <button id="clearBtn">선택 노트 삭제</button>
+    <button id="togglePanelBtn">패널 ▶</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn builder active" data-diagram="builder" id="tab-builder">
+    Template Builder <span id="cnt-builder" class="badge" hidden></span>
+  </button>
+  <button class="tab-btn runner" data-diagram="runner" id="tab-runner">
+    Template Runner <span id="cnt-runner" class="badge" hidden></span>
+  </button>
+</div>
+
+<main>
+  <div class="canvas-wrap">
+<div class="diagram-canvas" data-diagram="builder">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 1180"
+           style='background:#fff;font-family:"Noto Sans CJK KR", "Malgun Gothic", sans-serif'>
+        <defs>
+          <marker id="b-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="b-arr-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#c44" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="b-arr-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#46a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="b-arr-actor" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#888" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <symbol id="b-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 20 Q5 13 12 13 Q19 13 19 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+          <symbol id="b-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 2 L12 5 M12 19 L12 22 M2 12 L5 12 M19 12 L22 12 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+          <symbol id="b-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="9" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9 3 L9 6 M12 3 L12 6 M15 3 L15 6 M9 18 L9 21 M12 18 L12 21 M15 18 L15 21 M3 9 L6 9 M3 12 L6 12 M3 15 L6 15 M18 9 L21 9 M18 12 L21 12 M18 15 L21 15" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+        </defs>
+
+        <text x="32" y="40" font-size="22" font-weight="700" fill="#111">FPP — Template Builder</text>
+        <text x="32" y="62" font-size="13" fill="#666">템플릿 생성·수정 워크플로우 (1/2)</text>
+        <line x1="32" y1="80" x2="1300" y2="80" stroke="#c75450" stroke-width="1"/>
+
+        <ellipse cx="90" cy="200" rx="56" ry="40" fill="#f5f5f5" stroke="#999" stroke-width="0.8"/>
+        <text x="90" y="195" text-anchor="middle" font-size="12" fill="#333">Business</text>
+        <text x="90" y="211" text-anchor="middle" font-size="12" fill="#333">Document</text>
+        <line x1="148" y1="200" x2="195" y2="200" stroke="#555" stroke-width="1.5" marker-end="url(#b-arr)"/>
+
+        <rect x="200" y="178" width="120" height="46" rx="8" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="260" y="197" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">File Type</text>
+        <text x="260" y="213" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">분기</text>
+
+        <text x="335" y="148" font-size="10" fill="#666">Digital PDF</text>
+        <text x="328" y="200" font-size="10" fill="#666">Scanned / Image</text>
+        <text x="335" y="252" font-size="10" fill="#666">Excel</text>
+
+        <line x1="320" y1="195" x2="415" y2="155" stroke="#777" stroke-width="1.2" marker-end="url(#b-arr)"/>
+        <line x1="320" y1="200" x2="415" y2="208" stroke="#777" stroke-width="1.2" marker-end="url(#b-arr)"/>
+        <line x1="320" y1="205" x2="415" y2="262" stroke="#777" stroke-width="1.2" marker-end="url(#b-arr)"/>
+
+        <rect x="420" y="136" width="160" height="42" rx="6" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="500" y="154" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">PDF Reader</text>
+        <text x="500" y="168" text-anchor="middle" font-size="9" fill="#666">텍스트 레이어 추출</text>
+        <rect x="420" y="190" width="160" height="42" rx="6" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="500" y="208" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">OCR (det + rec)</text>
+        <text x="500" y="222" text-anchor="middle" font-size="9" fill="#666">이미지에서 텍스트 인식</text>
+        <rect x="420" y="244" width="160" height="42" rx="6" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="500" y="262" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">Excel Reader</text>
+        <text x="500" y="276" text-anchor="middle" font-size="9" fill="#666">셀 단위 추출</text>
+
+        <line x1="580" y1="157" x2="670" y2="197" stroke="#777" stroke-width="1.2" marker-end="url(#b-arr)"/>
+        <line x1="580" y1="211" x2="670" y2="203" stroke="#777" stroke-width="1.2" marker-end="url(#b-arr)"/>
+        <line x1="580" y1="265" x2="670" y2="210" stroke="#777" stroke-width="1.2" marker-end="url(#b-arr)"/>
+
+        <ellipse cx="740" cy="205" rx="65" ry="42" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="740" y="194" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a7a">정규화 JSON</text>
+        <text x="740" y="212" text-anchor="middle" font-size="10" fill="#333">text · conf · bbox</text>
+        <text x="740" y="226" text-anchor="middle" font-size="9" fill="#888">(통일 포맷)</text>
+
+        <line x1="740" y1="247" x2="740" y2="560" stroke="#555" stroke-width="1.5"/>
+        <line x1="740" y1="560" x2="828" y2="560" stroke="#555" stroke-width="1.5" marker-end="url(#b-arr)"/>
+
+        <circle cx="950" cy="135" r="22" fill="#f9f9f9" stroke="#666" stroke-width="1.2"/>
+        <use href="#b-gear" x="937" y="122" width="26" height="26" color="#444"/>
+        <text x="950" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#555">dev</text>
+        <text x="950" y="190" text-anchor="middle" font-size="9" fill="#888">사전 입력</text>
+        <circle cx="1030" cy="135" r="22" fill="#f9f9f9" stroke="#666" stroke-width="1.2"/>
+        <use href="#b-person" x="1017" y="122" width="26" height="26" color="#444"/>
+        <text x="1030" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#555">user</text>
+        <text x="1030" y="190" text-anchor="middle" font-size="9" fill="#888">직접 입력</text>
+        <circle cx="1110" cy="135" r="22" fill="#f9f9f9" stroke="#888" stroke-width="1.2" stroke-dasharray="3 2"/>
+        <use href="#b-cpu" x="1097" y="122" width="26" height="26" color="#666"/>
+        <text x="1110" y="175" text-anchor="middle" font-size="11" font-weight="600" fill="#888">AI</text>
+        <text x="1110" y="190" text-anchor="middle" font-size="9" fill="#999">(추후)</text>
+        <line x1="950" y1="200" x2="950" y2="245" stroke="#888" stroke-width="1.2" marker-end="url(#b-arr-actor)"/>
+        <line x1="1030" y1="200" x2="1030" y2="245" stroke="#888" stroke-width="1.2" marker-end="url(#b-arr-actor)"/>
+        <line x1="1110" y1="200" x2="1080" y2="245" stroke="#999" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#b-arr-actor)"/>
+
+        <rect x="850" y="250" width="290" height="260" rx="10" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        <text x="995" y="272" text-anchor="middle" font-size="13" font-weight="600" fill="#7a2620">Schema (초기)</text>
+        <text x="870" y="296" font-size="11" fill="#c44" font-weight="700">M1_Dev</text>
+        <text x="935" y="296" font-size="11" fill="#888">/</text>
+        <text x="948" y="296" font-size="11" fill="#e67c00" font-weight="700">M2_User 1</text>
+        <text x="1033" y="296" font-size="11" fill="#888">/</text>
+        <text x="1046" y="296" font-size="11" fill="#b89000" font-weight="700">M3_User 2</text>
+        <text x="870" y="322" font-size="11" fill="#333">template_id : tpl_xx</text>
+        <text x="870" y="340" font-size="11" fill="#333">keys : [</text>
+        <text x="888" y="360" font-size="11" fill="#333">key_id : k001</text>
+        <text x="888" y="378" font-size="11" fill="#333">rep_text : 공급자</text>
+        <text x="888" y="396" font-size="11" fill="#333">find_text : </text>
+        <text x="958" y="396" font-size="11" fill="#333">"공급자",</text>
+        <text x="1020" y="396" font-size="11" fill="#c44" font-weight="600">"공굽자"</text>
+        <text x="888" y="414" font-size="11" fill="#333">bbox : null</text>
+        <text x="888" y="432" font-size="11" fill="#333">value_hint : </text>
+        <text x="970" y="432" font-size="11" fill="#c44" font-weight="700">right</text>
+        <text x="1002" y="432" font-size="11" fill="#888">/</text>
+        <text x="1014" y="432" font-size="11" fill="#e67c00" font-weight="700">auto</text>
+        <text x="1045" y="432" font-size="11" fill="#888">/</text>
+        <text x="1057" y="432" font-size="11" fill="#b89000" font-weight="700">fix</text>
+        <text x="888" y="450" font-size="11" fill="#333">value_bbox : </text>
+        <text x="970" y="450" font-size="11" fill="#c44" font-weight="700">[..]</text>
+        <text x="996" y="450" font-size="11" fill="#888">/</text>
+        <text x="1008" y="450" font-size="11" fill="#e67c00" font-weight="700">null</text>
+        <text x="1036" y="450" font-size="11" fill="#888">/</text>
+        <text x="1048" y="450" font-size="11" fill="#b89000" font-weight="700">null → [..]</text>
+        <text x="888" y="468" font-size="11" fill="#888">value_text : null</text>
+        <text x="870" y="488" font-size="11" fill="#333">]</text>
+
+        <line x1="995" y1="510" x2="995" y2="548" stroke="#555" stroke-width="1.5" marker-end="url(#b-arr)"/>
+
+        <rect x="830" y="553" width="330" height="140" rx="12" fill="#f3eefa" stroke="#7d4ea8" stroke-width="1.2"/>
+        <text x="995" y="578" text-anchor="middle" font-size="14" font-weight="700" fill="#42206d">Processing</text>
+        <text x="850" y="600" font-size="11" fill="#333">·  Anchor Search</text>
+        <text x="850" y="620" font-size="11" fill="#333">·  Value Extractor</text>
+        <text x="864" y="638" font-size="9" fill="#666">- hint = right → Walker 호출</text>
+        <text x="864" y="654" font-size="9" fill="#666">- hint = auto → Predictor 호출</text>
+        <text x="864" y="670" font-size="9" fill="#666">- hint = fix → bbox Extractor 호출</text>
+        <text x="850" y="687" font-size="10" fill="#888">·  Value Position Predictor (추후 고도화)</text>
+
+        <line x1="995" y1="693" x2="995" y2="730" stroke="#555" stroke-width="1.5" marker-end="url(#b-arr)"/>
+
+        <rect x="850" y="735" width="290" height="180" rx="10" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        <text x="995" y="757" text-anchor="middle" font-size="13" font-weight="600" fill="#7a2620">Schema (1차 추출)</text>
+        <text x="995" y="774" text-anchor="middle" font-size="10" fill="#888">value_* 채워진 상태</text>
+        <text x="870" y="797" font-size="11" fill="#333">template_id : tpl_xx</text>
+        <text x="870" y="813" font-size="11" fill="#333">keys : [</text>
+        <text x="888" y="831" font-size="11" fill="#333">key_id : k001</text>
+        <text x="888" y="847" font-size="11" fill="#333">rep_text : 공급자</text>
+        <text x="888" y="863" font-size="11" fill="#333">find_text : 공급자</text>
+        <text x="888" y="879" font-size="11" fill="#333">bbox : [..]  value_hint : right</text>
+        <text x="888" y="895" font-size="11" fill="#1a7a3a">value_text : 한국상사</text>
+
+        <line x1="995" y1="915" x2="995" y2="952" stroke="#555" stroke-width="1.5" marker-end="url(#b-arr)"/>
+
+        <rect x="920" y="957" width="150" height="48" rx="8" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <use href="#b-person" x="930" y="969" width="22" height="22" color="#333"/>
+        <text x="1010" y="977" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a7a">User Confirm</text>
+        <text x="1010" y="994" text-anchor="middle" font-size="10" fill="#666">검수 + 수정</text>
+
+        <line x1="1070" y1="981" x2="1270" y2="981" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <line x1="1270" y1="981" x2="1270" y2="500" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <use href="#b-person" x="1244" y="455" width="22" height="22" color="#46a"/>
+        <rect x="1205" y="395" width="130" height="44" rx="6" fill="#eaf0fa" stroke="#46a" stroke-width="0.9"/>
+        <text x="1270" y="421" text-anchor="middle" font-size="12" font-weight="600" fill="#46a">Edit Template</text>
+        <line x1="1270" y1="500" x2="1270" y2="439" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#b-arr-blue)"/>
+        <line x1="1270" y1="395" x2="1270" y2="350" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <line x1="1270" y1="350" x2="1140" y2="350" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#b-arr-blue)"/>
+
+        <line x1="995" y1="1005" x2="995" y2="1037" stroke="#555" stroke-width="1.5" marker-end="url(#b-arr)"/>
+        <rect x="920" y="1042" width="150" height="48" rx="8" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        <text x="995" y="1063" text-anchor="middle" font-size="13" font-weight="600" fill="#7a2620">Template Saver</text>
+        <text x="995" y="1080" text-anchor="middle" font-size="10" fill="#888">신규 저장 / 덮어쓰기</text>
+
+        <line x1="995" y1="1090" x2="995" y2="1112" stroke="#c44" stroke-width="1.5" marker-end="url(#b-arr-red)"/>
+        <g>
+          <ellipse cx="995" cy="1122" rx="40" ry="7" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+          <path d="M 955 1122 L 955 1134 Q 955 1140 995 1140 Q 1035 1140 1035 1134 L 1035 1122" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        </g>
+        <text x="1075" y="1132" font-size="11" font-weight="600" fill="#7a2620">Template DB</text>
+
+        <g id="hits-builder"></g>
+      </svg>
+    </div>
+
+<div class="diagram-canvas" data-diagram="runner" hidden>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 1140"
+           style='background:#fff;font-family:"Noto Sans CJK KR", "Malgun Gothic", sans-serif'>
+        <defs>
+          <marker id="r-arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="r-arr-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#c44" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="r-arr-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#46a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <symbol id="r-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 20 Q5 13 12 13 Q19 13 19 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+        </defs>
+
+        <text x="32" y="40" font-size="22" font-weight="700" fill="#111">FPP — Template Runner</text>
+        <text x="32" y="62" font-size="13" fill="#666">저장된 템플릿 활용 워크플로우 (2/2)</text>
+        <line x1="32" y1="80" x2="1300" y2="80" stroke="#4a78c8" stroke-width="1"/>
+
+        <ellipse cx="90" cy="200" rx="56" ry="40" fill="#f5f5f5" stroke="#999" stroke-width="0.8"/>
+        <text x="90" y="195" text-anchor="middle" font-size="12" fill="#333">Business</text>
+        <text x="90" y="211" text-anchor="middle" font-size="12" fill="#333">Document</text>
+        <line x1="148" y1="200" x2="195" y2="200" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+
+        <rect x="200" y="178" width="120" height="46" rx="8" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="260" y="197" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">File Type</text>
+        <text x="260" y="213" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">분기</text>
+
+        <text x="335" y="148" font-size="10" fill="#666">Digital PDF</text>
+        <text x="328" y="200" font-size="10" fill="#666">Scanned / Image</text>
+        <text x="335" y="252" font-size="10" fill="#666">Excel</text>
+
+        <line x1="320" y1="195" x2="415" y2="155" stroke="#777" stroke-width="1.2" marker-end="url(#r-arr)"/>
+        <line x1="320" y1="200" x2="415" y2="208" stroke="#777" stroke-width="1.2" marker-end="url(#r-arr)"/>
+        <line x1="320" y1="205" x2="415" y2="262" stroke="#777" stroke-width="1.2" marker-end="url(#r-arr)"/>
+
+        <rect x="420" y="136" width="160" height="42" rx="6" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="500" y="154" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">PDF Reader</text>
+        <text x="500" y="168" text-anchor="middle" font-size="9" fill="#666">텍스트 레이어 추출</text>
+        <rect x="420" y="190" width="160" height="42" rx="6" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="500" y="208" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">OCR (det + rec)</text>
+        <text x="500" y="222" text-anchor="middle" font-size="9" fill="#666">이미지에서 텍스트 인식</text>
+        <rect x="420" y="244" width="160" height="42" rx="6" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="500" y="262" text-anchor="middle" font-size="12" font-weight="600" fill="#1a3a7a">Excel Reader</text>
+        <text x="500" y="276" text-anchor="middle" font-size="9" fill="#666">셀 단위 추출</text>
+
+        <line x1="580" y1="157" x2="670" y2="197" stroke="#777" stroke-width="1.2" marker-end="url(#r-arr)"/>
+        <line x1="580" y1="211" x2="670" y2="203" stroke="#777" stroke-width="1.2" marker-end="url(#r-arr)"/>
+        <line x1="580" y1="265" x2="670" y2="210" stroke="#777" stroke-width="1.2" marker-end="url(#r-arr)"/>
+
+        <ellipse cx="740" cy="205" rx="65" ry="42" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <text x="740" y="194" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a7a">정규화 JSON</text>
+        <text x="740" y="212" text-anchor="middle" font-size="10" fill="#333">text · conf · bbox</text>
+        <text x="740" y="226" text-anchor="middle" font-size="9" fill="#888">(통일 포맷)</text>
+
+        <line x1="740" y1="247" x2="740" y2="580" stroke="#555" stroke-width="1.5"/>
+        <line x1="740" y1="580" x2="828" y2="580" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+
+        <g>
+          <ellipse cx="1110" cy="155" rx="44" ry="8" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+          <path d="M 1066 155 L 1066 175 Q 1066 183 1110 183 Q 1154 183 1154 175 L 1154 155" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        </g>
+        <text x="1110" y="200" text-anchor="middle" font-size="11" font-weight="600" fill="#7a2620">Template DB</text>
+        <text x="1110" y="215" text-anchor="middle" font-size="9" fill="#888">(Read-only)</text>
+
+        <line x1="1110" y1="223" x2="1110" y2="267" stroke="#c44" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#r-arr-red)"/>
+        <text x="1125" y="248" font-size="10" fill="#c44" font-weight="600">불러오기</text>
+
+        <rect x="850" y="270" width="290" height="240" rx="10" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        <text x="995" y="292" text-anchor="middle" font-size="13" font-weight="600" fill="#7a2620">Schema (로드)</text>
+        <text x="870" y="316" font-size="11" fill="#c44" font-weight="700">M1_Dev</text>
+        <text x="935" y="316" font-size="11" fill="#888">/</text>
+        <text x="948" y="316" font-size="11" fill="#e67c00" font-weight="700">M2_User 1</text>
+        <text x="1033" y="316" font-size="11" fill="#888">/</text>
+        <text x="1046" y="316" font-size="11" fill="#b89000" font-weight="700">M3_User 2</text>
+        <text x="870" y="342" font-size="11" fill="#333">template_id : tpl_xx</text>
+        <text x="870" y="360" font-size="11" fill="#333">keys : [</text>
+        <text x="888" y="380" font-size="11" fill="#333">key_id : k001</text>
+        <text x="888" y="398" font-size="11" fill="#333">rep_text : 공급자</text>
+        <text x="888" y="416" font-size="11" fill="#333">find_text : </text>
+        <text x="958" y="416" font-size="11" fill="#333">"공급자",</text>
+        <text x="1020" y="416" font-size="11" fill="#c44" font-weight="600">"공굽자"</text>
+        <text x="888" y="434" font-size="11" fill="#333">bbox : null</text>
+        <text x="888" y="452" font-size="11" fill="#333">value_hint : </text>
+        <text x="970" y="452" font-size="11" fill="#c44" font-weight="700">right</text>
+        <text x="1002" y="452" font-size="11" fill="#888">/</text>
+        <text x="1014" y="452" font-size="11" fill="#e67c00" font-weight="700">auto</text>
+        <text x="1045" y="452" font-size="11" fill="#888">/</text>
+        <text x="1057" y="452" font-size="11" fill="#b89000" font-weight="700">fix</text>
+        <text x="888" y="470" font-size="11" fill="#333">value_bbox : </text>
+        <text x="970" y="470" font-size="11" fill="#c44" font-weight="700">[..]</text>
+        <text x="996" y="470" font-size="11" fill="#888">/</text>
+        <text x="1008" y="470" font-size="11" fill="#e67c00" font-weight="700">null</text>
+        <text x="1036" y="470" font-size="11" fill="#888">/</text>
+        <text x="1048" y="470" font-size="11" fill="#b89000" font-weight="700">null → [..]</text>
+        <text x="888" y="488" font-size="11" fill="#888">value_text : null (실행 시 채워짐)</text>
+        <text x="870" y="504" font-size="11" fill="#333">]</text>
+
+        <line x1="995" y1="510" x2="995" y2="548" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+
+        <rect x="830" y="553" width="330" height="140" rx="12" fill="#f3eefa" stroke="#7d4ea8" stroke-width="1.2"/>
+        <text x="995" y="578" text-anchor="middle" font-size="14" font-weight="700" fill="#42206d">Processing</text>
+        <text x="850" y="600" font-size="11" fill="#333">·  Anchor Search</text>
+        <text x="850" y="620" font-size="11" fill="#333">·  Value Extractor</text>
+        <text x="864" y="638" font-size="9" fill="#666">- hint = right → Walker 호출</text>
+        <text x="864" y="654" font-size="9" fill="#666">- hint = auto → Predictor 호출</text>
+        <text x="864" y="670" font-size="9" fill="#666">- hint = fix → bbox Extractor 호출</text>
+        <text x="850" y="687" font-size="10" fill="#888">·  Value Position Predictor (추후 고도화)</text>
+
+        <line x1="995" y1="713" x2="995" y2="748" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+
+        <rect x="850" y="753" width="290" height="160" rx="10" fill="#fdecea" stroke="#c75450" stroke-width="0.8"/>
+        <text x="995" y="775" text-anchor="middle" font-size="13" font-weight="600" fill="#7a2620">Schema (값 채워짐)</text>
+        <text x="995" y="792" text-anchor="middle" font-size="10" fill="#888">이 문서 1건의 추출 결과</text>
+        <text x="870" y="815" font-size="11" fill="#333">template_id : tpl_xx</text>
+        <text x="870" y="831" font-size="11" fill="#333">keys : [</text>
+        <text x="888" y="849" font-size="11" fill="#333">key_id : k001</text>
+        <text x="888" y="865" font-size="11" fill="#333">rep_text : 공급자</text>
+        <text x="888" y="881" font-size="11" fill="#1a7a3a">value_text : 한국상사</text>
+        <text x="888" y="897" font-size="11" fill="#1a7a3a">value_bbox : [..]</text>
+
+        <line x1="995" y1="913" x2="995" y2="950" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+
+        <rect x="920" y="955" width="150" height="48" rx="8" fill="#e8f0fe" stroke="#4a78c8" stroke-width="0.8"/>
+        <use href="#r-person" x="930" y="967" width="22" height="22" color="#333"/>
+        <text x="1010" y="975" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a7a">User Confirm</text>
+        <text x="1010" y="992" text-anchor="middle" font-size="10" fill="#666">결과 검수 + 수정</text>
+
+        <line x1="1070" y1="979" x2="1195" y2="979" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#r-arr-blue)"/>
+        <rect x="1200" y="957" width="125" height="44" rx="6" fill="#eaf0fa" stroke="#46a" stroke-width="0.9"/>
+        <text x="1262" y="983" text-anchor="middle" font-size="12" font-weight="600" fill="#46a">Edit schema</text>
+        <line x1="1262" y1="957" x2="1262" y2="833" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4"/>
+        <line x1="1262" y1="833" x2="1140" y2="833" stroke="#46a" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#r-arr-blue)"/>
+        <text x="1200" y="945" font-size="9" fill="#888">※ Template DB 변경 없음</text>
+
+        <line x1="995" y1="1003" x2="995" y2="1035" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+
+        <rect x="920" y="1040" width="150" height="48" rx="8" fill="#e3f3e8" stroke="#3a8a55" stroke-width="0.8"/>
+        <text x="995" y="1060" text-anchor="middle" font-size="13" font-weight="600" fill="#1f4a30">Key-Value JSON</text>
+        <text x="995" y="1076" text-anchor="middle" font-size="13" font-weight="600" fill="#1f4a30">Maker</text>
+
+        <line x1="920" y1="1064" x2="850" y2="1064" stroke="#555" stroke-width="1.5" marker-end="url(#r-arr)"/>
+        <ellipse cx="785" cy="1064" rx="60" ry="34" fill="#e3f3e8" stroke="#3a8a55" stroke-width="0.8"/>
+        <text x="785" y="1060" text-anchor="middle" font-size="12" font-weight="600" fill="#1f4a30">JSON</text>
+        <text x="785" y="1078" text-anchor="middle" font-size="10" fill="#333">key : value</text>
+
+        <g id="hits-runner"></g>
+      </svg>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <div id="panelEmpty" class="empty">
+      좌측에서 노드/화살표를 클릭하면 여기서 이슈 · 추후 과업 · 메모를 적을 수 있어.
+      <br><br>주황 테두리 = 이미 노트가 있는 노드.
+    </div>
+    <div id="panelContent" hidden>
+      <div class="panel-header">
+        <div>
+          <div class="name">
+            <span id="nodeName"></span>
+            <span id="diagramTag" class="diagram-tag"></span>
+          </div>
+          <div class="id" id="nodeId"></div>
+        </div>
+        <button class="close" id="closeBtn" title="닫기">×</button>
+      </div>
+      <div class="panel-body">
+        <div class="section memo-only">
+          <label>메모 <span class="count" id="cntMemo"></span></label>
+          <textarea id="taMemo" placeholder="이슈 · 추후 과업 · 설계 의도 · 참고 자료… 자유롭게"></textarea>
+          <div class="memo-links empty" id="memoLinks"></div>
+        </div>
+      </div>
+      <div class="save-state" id="saveState">저장됨</div>
+    </div>
+    <div class="all-notes">
+      <h3>노트 목록 <span class="filter" id="filterLabel"></span></h3>
+      <ul id="notedList"></ul>
+    </div>
+  </aside>
+</main>
+
+<button class="reopen-handle" id="reopenHandle">◀ 노트</button>
+
+<footer class="legend">
+  <div class="item"><span class="swatch sw-hover"></span> hover</div>
+  <div class="item"><span class="swatch sw-selected"></span> 선택됨</div>
+  <div class="item"><span class="swatch sw-noted"></span> 노트 있음</div>
+  <div class="item" style="margin-left:auto">localStorage : <code>fpp-final.notes.v1</code></div>
+</footer>
+
+<script type="application/json" id="embedded-notes">{
+  "builder/file-type-router": {
+    "issues": "",
+    "tasks": "",
+    "memo": "1. .png/.jpg/.jpeg 이미지 -> 확장자만 보고 -> ocr_reader.py (PaddleOCR + grid_cells.detect_cells)
+
+2. PDF -> pypdfium2로 1페이지 text 추출 시도 -> 되면 pdf_reader.pyu (opendataloader) / 안되면 ocr_reader.py
+
+3. xlxs -> 확장자만 보고 -> excel_reader.py (openpyxl) + 가상격자좌표",
+    "updatedAt": "2026-05-14T06:51:24.613Z"
+  },
+  "builder/reader-pdf": {
+    "memo": "Opendata loader / pymupdf 비교 분석 필요.
+
+이슈 : Opendataloader가 layout를 반영하여 json/md/html로 대체로 잘 주긴함. 
+하지만 두 문제가 현재 발견되어 파악 중
+1. 가끔 두 셀 내용을 합쳐서 처리함
+2. 세로로 긴 cell의 세로 배치 글자를 거꾸로 읽어서 그대로 출력 
+",
+    "updatedAt": "2026-05-14T07:56:25.496Z"
+  },
+  "builder/reader-ocr": {
+    "memo": "7주간의 과업 : 
+- OCR 실험 정리
+https://www.notion.so/OCR-KIE-3457d269eb39800b82a5fc0fc614410c
+
+해당 과업 중, key find / key solution
+1. EasyOCR의 detection 모델에서(craft_mlt_25k) 문제발생
+- 세로 글자를 인식하지 못하고, 가로로 읽어서 결과를 냄
+- 한 글자를 길쭉하게 bbox 침
+- 다른 영역에 가로로 침범함
+-> CRAFT 논문을 찾아보고, 구조를 분석하여 수평 Affinity에 강하게 편향된 것을 확인하였음.
+이렇게 설계된 모델 자체를 바꿀 수 없으니, 문제점 파악 후, 바로 다른 모델 테스트로 넘어감.
+
+2. PPSturctureV3를 찾아, 해당 파이프라인의 작동방식 및 세부 모델을 살펴보고 한국어 비즈니스 문서에 적용해봄. 
+PPsturctureV3가 잘 작동하지 않는 문서였기에, det 모델과 rec 모델만 가지고 나옴
+
+3. PPsturctureV3나 pdf reader tool이 제공하는 레이아웃 정보 제공말고도, 어떻게 layout 정보를 효과적으로 추출하여 반영할 수 있을 지 생각하고 찾아보기 시작함. 
+-> OpenCV , Morphology 를 접하고 공부
+-> 격자 추출의 경우 Opening 연산을 \"적당한\" kernel을 세팅하여 수행하면 글자는 사라지고 격자 구조만 남게되는 것을 확인함.
+-> PaddleOCR로 글자를 detect 하고, layout은 OpenCV의 Opening연산으로 추출하여 같은 Cell에 있는 bbox를 concat 하여 테두리가 있는 Excel 문서에 효과적으로 대응할 수 있게 만듬.",
+    "updatedAt": "2026-05-14T08:09:06.858Z"
+  },
+  "builder/reader-excel": {
+    "memo": "[해결하지 못했지만 생각해봐야 하는 문제]
+
+
+연속된 글자가 병합되지 않고, 여러 셀에 나뉘어 담겨져있는 경우를 정확히 parsing 못함.
+
+왜냐하면, 현재 key기준 value hint를 받아 한 cell을 가져와 답을 내기 때문.
+
+-> 실제 데이터셋에서도 해당 문제가 있을 것이기 때문에, 고려해야할 요소.
+",
+    "updatedAt": "2026-05-14T08:14:44.978Z"
+  },
+  "builder/processing": {
+    "memo": "Anchor based search 제안,
+
+앞에서 전처리를 잘 해놓았기 때문에,
+Key 탐색은 잘되는 상태
++ VR filtraion 방법이 세로 글자들을 detect 하거나, layout이 인쇄가 안된 양식에서 key 위치를 잡을 수 있도록 강력하게 작동하는 것을 확인. (현재도 pdf reader 실험 중에도 체감)
+
+Anchor based search에서
+생각 -> AI와 구현 -> 문제 발생 -> 해결할 수 있는 문제(EX. 중복 Key)/넘어가야 할 문제(EX. OCR 이슈) -> 해결 및 정리
+
+의 체계를 유지하며 코드를 주도적으로 발전 시킴
+
+https://www.notion.so/Key-Information-Extraction-3487d269eb39805c92e2c94a5fe7f6ba",
+    "updatedAt": "2026-05-14T08:31:23.212Z"
+  },
+  "builder/schema-initial": {
+    "memo": "지금까지 테스트한 코드들과 지식들을 기반으로,실제 서비스를 한다면 어떻게 서비스를 구현할 수 있을까 고민하여 M1/M2/M3/M4 시나리오로 나눔.
+
+이 시나리오를 나눌 때,
+지금까지 한 모든 과업을 회고하며 생각을 정리함.
+
+- 과제의 목표
+- 과제의 이유
+- 과제의 대상 및 범위
+- 과제의 대상 심층 분석 
+-> 문서/코딩 관점에서의 Input 대상의 feature 분석
+
+1. Key 사전 정의 
+2. Key position Fix 
+3. Value position FIx 
+4. 문서 내 Key 존재
+5. Key로부터 Value 위치정보 Fix
+
+https://www.notion.so/Key-Value-Project-3597d269eb39805fb377d75b96a4d5f6",
+    "updatedAt": "2026-05-14T08:27:50.124Z"
+  },
+  "builder/template-db-builder": {
+    "memo": "결과 브리핑
+
+https://www.notion.so/Key-Value-_-3607d269eb3980f985b5d1ebafcaa1f5
+",
+    "updatedAt": "2026-05-14T08:30:24.322Z"
+  }
+}</script>
+
+<script>
+const NODES = {
+  builder: [
+    { id:'business-document',    name:'Business Document',           x:30,  y:160, w:120, h:80, cat:'입력' },
+    { id:'file-type-router',     name:'File Type 분기',              x:200, y:178, w:120, h:46, cat:'입력' },
+    { id:'branch-digital-pdf',   name:'분기: Digital PDF',           x:320, y:138, w:100, h:25, cat:'분기' },
+    { id:'branch-scanned',       name:'분기: Scanned / Image',       x:320, y:188, w:110, h:25, cat:'분기' },
+    { id:'branch-excel',         name:'분기: Excel',                 x:320, y:240, w:100, h:28, cat:'분기' },
+    { id:'reader-pdf',           name:'PDF Reader (텍스트 레이어 추출)', x:420, y:136, w:160, h:42, cat:'reader' },
+    { id:'reader-ocr',           name:'OCR (det + rec)',             x:420, y:190, w:160, h:42, cat:'reader' },
+    { id:'reader-excel',         name:'Excel Reader (셀 단위 추출)',  x:420, y:244, w:160, h:42, cat:'reader' },
+    { id:'json-normalized',      name:'정규화 JSON (text · conf · bbox)', x:675, y:163, w:130, h:84, cat:'중간' },
+    { id:'actor-dev',            name:'dev (사전 입력)',             x:925, y:113, w:50,  h:82, cat:'액터' },
+    { id:'actor-user',           name:'user (직접 입력)',            x:1005,y:113, w:50,  h:82, cat:'액터' },
+    { id:'actor-ai',             name:'AI (추후)',                   x:1085,y:113, w:50,  h:82, cat:'액터' },
+    { id:'schema-initial',       name:'Schema (초기, value_*=null)', x:850, y:250, w:290, h:260, cat:'스키마' },
+    { id:'processing',           name:'Processing (Anchor / Walker / Predictor / bbox Extractor)', x:830, y:553, w:330, h:140, cat:'엔진' },
+    { id:'schema-extracted',     name:'Schema (1차 추출, value_* 채워짐)', x:850, y:735, w:290, h:180, cat:'스키마' },
+    { id:'user-confirm',         name:'User Confirm (검수 + 수정)',  x:920, y:957, w:150, h:48, cat:'검수' },
+    { id:'edit-template',        name:'Edit Template (수정 회귀)',   x:1205,y:395, w:130, h:44, cat:'편집' },
+    { id:'template-saver',       name:'Template Saver (신규/덮어쓰기)', x:920, y:1042, w:150, h:48, cat:'출력' },
+    { id:'template-db-builder',  name:'Template DB (저장 대상)',     x:950, y:1115, w:170, h:30, cat:'저장소' },
+  ],
+  runner: [
+    { id:'business-document',    name:'Business Document',           x:30,  y:160, w:120, h:80, cat:'입력' },
+    { id:'file-type-router',     name:'File Type 분기',              x:200, y:178, w:120, h:46, cat:'입력' },
+    { id:'branch-digital-pdf',   name:'분기: Digital PDF',           x:320, y:138, w:100, h:25, cat:'분기' },
+    { id:'branch-scanned',       name:'분기: Scanned / Image',       x:320, y:188, w:110, h:25, cat:'분기' },
+    { id:'branch-excel',         name:'분기: Excel',                 x:320, y:240, w:100, h:28, cat:'분기' },
+    { id:'reader-pdf',           name:'PDF Reader (텍스트 레이어 추출)', x:420, y:136, w:160, h:42, cat:'reader' },
+    { id:'reader-ocr',           name:'OCR (det + rec)',             x:420, y:190, w:160, h:42, cat:'reader' },
+    { id:'reader-excel',         name:'Excel Reader (셀 단위 추출)',  x:420, y:244, w:160, h:42, cat:'reader' },
+    { id:'json-normalized',      name:'정규화 JSON (text · conf · bbox)', x:675, y:163, w:130, h:84, cat:'중간' },
+    { id:'template-db-runner',   name:'Template DB (Read-only, 로드)', x:1060,y:140, w:100, h:80, cat:'저장소' },
+    { id:'schema-loaded',        name:'Schema (로드, DB 에서 가져옴)', x:850, y:270, w:290, h:240, cat:'스키마' },
+    { id:'processing',           name:'Processing (Anchor / Walker / Predictor / bbox Extractor)', x:830, y:553, w:330, h:140, cat:'엔진' },
+    { id:'schema-filled',        name:'Schema (값 채워짐, 1건 추출)', x:850, y:753, w:290, h:160, cat:'스키마' },
+    { id:'user-confirm',         name:'User Confirm (결과 검수 + 수정)', x:920, y:955, w:150, h:48, cat:'검수' },
+    { id:'edit-schema',          name:'Edit schema (DB 변경 없음)',  x:1200,y:957, w:125, h:44, cat:'편집' },
+    { id:'kv-json-maker',        name:'Key-Value JSON Maker',        x:920, y:1040, w:150, h:48, cat:'출력' },
+    { id:'json-output',          name:'JSON (최종 key:value)',       x:725, y:1030, w:120, h:68, cat:'출력' },
+  ],
+};
+
+const STORAGE_KEY = 'fpp-final.notes.v1';
+const PANEL_STATE_KEY = 'fpp-final.panel.open';
+const TAB_STATE_KEY = 'fpp-final.activeTab';
+
+function loadAll() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveAll(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function key(diagram, nodeId) { return `${diagram}/${nodeId}`; }
+function getNote(diagram, nodeId) {
+  const all = loadAll();
+  return all[key(diagram, nodeId)] || { memo:'', updatedAt:null };
+}
+function setNote(diagram, nodeId, partial) {
+  const all = loadAll();
+  const k = key(diagram, nodeId);
+  const cur = all[k] || { memo:'', updatedAt:null };
+  Object.assign(cur, partial, { updatedAt: new Date().toISOString() });
+  if (!cur.memo) delete all[k];
+  else all[k] = cur;
+  saveAll(all);
+}
+function hasAny(rec) { return rec && rec.memo; }
+
+const $ = id => document.getElementById(id);
+const SVG_NS = 'http://www.w3.org/2000/svg';
+let activeDiagram = 'builder';
+let selectedNodeId = null;
+let saveTimer = null;
+
+function buildHitsFor(diagram) {
+  const hitsGroup = $(`hits-${diagram}`);
+  hitsGroup.innerHTML = '';
+  NODES[diagram].forEach(n => {
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('class', 'node-hit');
+    rect.setAttribute('data-id', n.id);
+    rect.setAttribute('data-diagram', diagram);
+    rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
+    rect.setAttribute('width', n.w); rect.setAttribute('height', n.h);
+    rect.setAttribute('rx', 4); rect.setAttribute('ry', 4);
+    rect.addEventListener('click', () => selectNode(diagram, n.id));
+    hitsGroup.appendChild(rect);
+  });
+}
+
+function refreshDots() {
+  const all = loadAll();
+  ['builder', 'runner'].forEach(d => {
+    const hitsGroup = $(`hits-${d}`);
+    hitsGroup.querySelectorAll('.note-dot').forEach(n => n.remove());
+    hitsGroup.querySelectorAll('.node-hit').forEach(r => r.classList.remove('has-notes'));
+    NODES[d].forEach(n => {
+      if (hasAny(all[key(d, n.id)])) {
+        const hit = hitsGroup.querySelector(`.node-hit[data-id="${n.id}"]`);
+        if (hit) hit.classList.add('has-notes');
+        const dot = document.createElementNS(SVG_NS, 'circle');
+        dot.setAttribute('class', 'note-dot');
+        dot.setAttribute('cx', n.x + n.w - 5);
+        dot.setAttribute('cy', n.y + 5);
+        dot.setAttribute('r', 4);
+        hitsGroup.appendChild(dot);
+      }
+    });
+  });
+  refreshTabBadges();
+  refreshNotedList();
+}
+
+function refreshTabBadges() {
+  const all = loadAll();
+  ['builder', 'runner'].forEach(d => {
+    const n = NODES[d].filter(node => hasAny(all[key(d, node.id)])).length;
+    const badge = $(`cnt-${d}`);
+    badge.textContent = n;
+    badge.hidden = n === 0;
+  });
+}
+
+function selectNode(diagram, nodeId) {
+  if (diagram !== activeDiagram) switchDiagram(diagram);
+  selectedNodeId = nodeId;
+  document.querySelectorAll('.node-hit').forEach(r => {
+    const same = r.getAttribute('data-id') === nodeId &&
+                 r.getAttribute('data-diagram') === diagram;
+    r.classList.toggle('selected', same);
+  });
+  const node = NODES[diagram].find(n => n.id === nodeId);
+  if (!node) return;
+  setPanelOpen(true);
+  $('panelEmpty').hidden = true;
+  $('panelContent').hidden = false;
+  $('nodeName').textContent = node.name;
+  $('nodeId').textContent = `${node.cat} · ${nodeId}`;
+  const tag = $('diagramTag');
+  tag.textContent = diagram;
+  tag.className = `diagram-tag ${diagram}`;
+  const rec = getNote(diagram, nodeId);
+  $('taMemo').value = rec.memo;
+  updateCounts();
+  setSaveState(rec.updatedAt ? `마지막 저장: ${formatTime(rec.updatedAt)}` : '아직 저장된 메모 없음');
+}
+
+function clearSelection() {
+  selectedNodeId = null;
+  document.querySelectorAll('.node-hit').forEach(r => r.classList.remove('selected'));
+  $('panelEmpty').hidden = false;
+  $('panelContent').hidden = true;
+}
+
+function updateCounts() {
+  const m = $('taMemo').value;
+  $('cntMemo').textContent = m ? `${countLines(m)}줄` : '';
+  updateLinks(m);
+}
+
+function updateLinks(memo) {
+  const box = $('memoLinks');
+  // http(s)://, file:///, www. 시작 URL 추출. 끝에 따라붙는 일반적 구두점 제거.
+  const re = /(https?:\/\/[^\s<>"'`]+|file:\/\/\/[^\s<>"'`]+|www\.[^\s<>"'`]+)/gi;
+  const found = (memo.match(re) || []).map(u => u.replace(/[.,;:)\]}]+$/, ''));
+  const uniq = [...new Set(found)];
+  if (uniq.length === 0) {
+    box.classList.add('empty');
+    box.innerHTML = '';
+    return;
+  }
+  box.classList.remove('empty');
+  box.innerHTML = `<div class="label">링크 (${uniq.length})</div>` +
+    uniq.map(u => {
+      const href = u.startsWith('www.') ? 'http://' + u : u;
+      // 텍스트 escape
+      const safe = u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<a href="${href}" target="_blank" rel="noopener">${safe}</a>`;
+    }).join('');
+}
+function countLines(s) { return s.split(/\n/).filter(x => x.trim()).length; }
+function formatTime(iso) {
+  try {
+    const d = new Date(iso); const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return iso; }
+}
+function setSaveState(text) { $('saveState').textContent = text; }
+
+function debounceSave() {
+  if (!selectedNodeId) return;
+  setSaveState('저장 중…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    setNote(activeDiagram, selectedNodeId, {
+      memo: $('taMemo').value,
+    });
+    setSaveState(`마지막 저장: ${formatTime(new Date().toISOString())}`);
+    refreshDots();
+    updateCounts();
+  }, 350);
+}
+
+$('taMemo').addEventListener('input', debounceSave);
+$('closeBtn').addEventListener('click', () => { clearSelection(); setPanelOpen(false); });
+
+function refreshNotedList() {
+  const all = loadAll();
+  const ul = $('notedList');
+  ul.innerHTML = '';
+  const items = [];
+  Object.keys(all).forEach(k => {
+    const [diagram, nodeId] = k.split('/');
+    const node = (NODES[diagram] || []).find(n => n.id === nodeId);
+    if (node && hasAny(all[k])) items.push({ diagram, nodeId, node, rec: all[k] });
+  });
+  items.sort((a, b) => (b.rec.updatedAt || '').localeCompare(a.rec.updatedAt || ''));
+  $('filterLabel').textContent = `(전체 ${items.length}건)`;
+  items.forEach(it => {
+    const li = document.createElement('li');
+    const left = document.createElement('span');
+    const diag = document.createElement('span');
+    diag.className = `diag ${it.diagram}`;
+    diag.textContent = it.diagram === 'builder' ? 'B' : 'R';
+    left.appendChild(diag);
+    left.append(document.createTextNode(it.node.name));
+    const right = document.createElement('span');
+    right.className = 'tag';
+    right.textContent = it.rec.memo ? `${countLines(it.rec.memo)}줄` : '';
+    li.appendChild(left); li.appendChild(right);
+    li.addEventListener('click', () => selectNode(it.diagram, it.nodeId));
+    ul.appendChild(li);
+  });
+}
+
+function switchDiagram(name) {
+  activeDiagram = name;
+  document.querySelectorAll('.diagram-canvas').forEach(c => {
+    c.hidden = c.dataset.diagram !== name;
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.diagram === name);
+  });
+  localStorage.setItem(TAB_STATE_KEY, name);
+  clearSelection();
+}
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.addEventListener('click', () => switchDiagram(b.dataset.diagram));
+});
+
+function setPanelOpen(open) {
+  const main = document.querySelector('main');
+  main.classList.toggle('panel-collapsed', !open);
+  $('togglePanelBtn').textContent = open ? '패널 ▶' : '패널 ◀';
+  localStorage.setItem(PANEL_STATE_KEY, open ? '1' : '0');
+}
+$('togglePanelBtn').addEventListener('click', () => {
+  const isCollapsed = document.querySelector('main').classList.contains('panel-collapsed');
+  setPanelOpen(isCollapsed);
+});
+$('reopenHandle').addEventListener('click', () => setPanelOpen(true));
+
+$('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(loadAll(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url; a.download = `fpp-final-notes-${ts}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+$('importBtn').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const cur = loadAll();
+      Object.assign(cur, data);
+      saveAll(cur);
+      refreshDots();
+      if (selectedNodeId) selectNode(activeDiagram, selectedNodeId);
+      alert(`불러왔어. ${Object.keys(data).length}개 항목 병합 완료.`);
+    } catch (err) { alert('파일 형식 오류: ' + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+$('clearBtn').addEventListener('click', () => {
+  if (!selectedNodeId) { alert('먼저 노드를 선택해.'); return; }
+  const node = NODES[activeDiagram].find(n => n.id === selectedNodeId);
+  if (!confirm(`'${node.name}' (${activeDiagram}) 노트 삭제할까?`)) return;
+  const all = loadAll();
+  delete all[key(activeDiagram, selectedNodeId)];
+  saveAll(all);
+  selectNode(activeDiagram, selectedNodeId);
+  refreshDots();
+});
+
+function loadEmbedded() {
+  const el = document.getElementById('embedded-notes');
+  if (!el) return {};
+  try { return JSON.parse((el.textContent || '').trim() || '{}'); }
+  catch { return {}; }
+}
+
+function mergeEmbeddedIntoLocal() {
+  const embedded = loadEmbedded();
+  if (!embedded || Object.keys(embedded).length === 0) return 0;
+  const local = loadAll();
+  let added = 0;
+  for (const k in embedded) {
+    const e = embedded[k];
+    const l = local[k];
+    if (!l) {
+      local[k] = e;
+      added++;
+    } else {
+      // 양쪽 다 있으면 updatedAt 새로운 쪽 우선
+      const lu = l.updatedAt || '';
+      const eu = e.updatedAt || '';
+      if (eu > lu) { local[k] = e; added++; }
+    }
+  }
+  saveAll(local);
+  return added;
+}
+
+$('downloadHtmlBtn').addEventListener('click', () => {
+  const notes = loadAll();
+  const notesJson = JSON.stringify(notes, null, 2)
+    .replace(/<\//g, '<\\/');   // </script> 침해 방지
+  const html = document.documentElement.outerHTML.replace(
+    /<script type="application\/json" id="embedded-notes">[\s\S]*?<\/script>/,
+    () => `<script type="application/json" id="embedded-notes">${notesJson}<\/script>`
+  );
+  const blob = new Blob(['<!DOCTYPE html>\n', html],
+                        { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.href = url; a.download = `fpp-viewer-${ts}.html`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+
+const mergedCount = mergeEmbeddedIntoLocal();
+if (mergedCount > 0) console.log(`내장 노트 ${mergedCount}개 병합`);
+
+buildHitsFor('builder');
+buildHitsFor('runner');
+
+const savedTab = localStorage.getItem(TAB_STATE_KEY);
+if (savedTab === 'runner' || savedTab === 'builder') switchDiagram(savedTab);
+else switchDiagram('builder');
+
+const savedPanel = localStorage.getItem(PANEL_STATE_KEY);
+setPanelOpen(savedPanel === null ? true : savedPanel === '1');
+
+refreshDots();
+</script>
+
+</body>
+</html>
