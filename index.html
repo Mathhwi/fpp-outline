@@ -868,7 +868,7 @@ function mergeEmbeddedIntoLocal() {
 $('downloadHtmlBtn').addEventListener('click', () => {
   const notes = loadAll();
   const notesJson = JSON.stringify(notes, null, 2)
-    .replace(/<\//g, '<\\/');   // </script> 침해 방지
+    .replace(/<\//g, '<\\/');   // closing-tag 침해 방지
   const html = document.documentElement.outerHTML.replace(
     /<script type="application\/json" id="embedded-notes">[\s\S]*?<\/script>/,
     () => `<script type="application/json" id="embedded-notes">${notesJson}<\/script>`
