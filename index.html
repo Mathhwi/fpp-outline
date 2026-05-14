@@ -506,98 +506,31 @@
   "builder/file-type-router": {
     "issues": "",
     "tasks": "",
-    "memo": "1. .png/.jpg/.jpeg 이미지 -> 확장자만 보고 -> ocr_reader.py (PaddleOCR + grid_cells.detect_cells)
-
-2. PDF -> pypdfium2로 1페이지 text 추출 시도 -> 되면 pdf_reader.pyu (opendataloader) / 안되면 ocr_reader.py
-
-3. xlxs -> 확장자만 보고 -> excel_reader.py (openpyxl) + 가상격자좌표",
+    "memo": "1. .png/.jpg/.jpeg 이미지 -> 확장자만 보고 -> ocr_reader.py (PaddleOCR + grid_cells.detect_cells)\n\n2. PDF -> pypdfium2로 1페이지 text 추출 시도 -> 되면 pdf_reader.pyu (opendataloader) / 안되면 ocr_reader.py\n\n3. xlxs -> 확장자만 보고 -> excel_reader.py (openpyxl) + 가상격자좌표",
     "updatedAt": "2026-05-14T06:51:24.613Z"
   },
   "builder/reader-pdf": {
-    "memo": "Opendata loader / pymupdf 비교 분석 필요.
-
-이슈 : Opendataloader가 layout를 반영하여 json/md/html로 대체로 잘 주긴함. 
-하지만 두 문제가 현재 발견되어 파악 중
-1. 가끔 두 셀 내용을 합쳐서 처리함
-2. 세로로 긴 cell의 세로 배치 글자를 거꾸로 읽어서 그대로 출력 
-",
+    "memo": "Opendata loader / pymupdf 비교 분석 필요.\n\n이슈 : Opendataloader가 layout를 반영하여 json/md/html로 대체로 잘 주긴함. \n하지만 두 문제가 현재 발견되어 파악 중\n1. 가끔 두 셀 내용을 합쳐서 처리함\n2. 세로로 긴 cell의 세로 배치 글자를 거꾸로 읽어서 그대로 출력 \n",
     "updatedAt": "2026-05-14T07:56:25.496Z"
   },
   "builder/reader-ocr": {
-    "memo": "7주간의 과업 : 
-- OCR 실험 정리
-https://www.notion.so/OCR-KIE-3457d269eb39800b82a5fc0fc614410c
-
-해당 과업 중, key find / key solution
-1. EasyOCR의 detection 모델에서(craft_mlt_25k) 문제발생
-- 세로 글자를 인식하지 못하고, 가로로 읽어서 결과를 냄
-- 한 글자를 길쭉하게 bbox 침
-- 다른 영역에 가로로 침범함
--> CRAFT 논문을 찾아보고, 구조를 분석하여 수평 Affinity에 강하게 편향된 것을 확인하였음.
-이렇게 설계된 모델 자체를 바꿀 수 없으니, 문제점 파악 후, 바로 다른 모델 테스트로 넘어감.
-
-2. PPSturctureV3를 찾아, 해당 파이프라인의 작동방식 및 세부 모델을 살펴보고 한국어 비즈니스 문서에 적용해봄. 
-PPsturctureV3가 잘 작동하지 않는 문서였기에, det 모델과 rec 모델만 가지고 나옴
-
-3. PPsturctureV3나 pdf reader tool이 제공하는 레이아웃 정보 제공말고도, 어떻게 layout 정보를 효과적으로 추출하여 반영할 수 있을 지 생각하고 찾아보기 시작함. 
--> OpenCV , Morphology 를 접하고 공부
--> 격자 추출의 경우 Opening 연산을 \"적당한\" kernel을 세팅하여 수행하면 글자는 사라지고 격자 구조만 남게되는 것을 확인함.
--> PaddleOCR로 글자를 detect 하고, layout은 OpenCV의 Opening연산으로 추출하여 같은 Cell에 있는 bbox를 concat 하여 테두리가 있는 Excel 문서에 효과적으로 대응할 수 있게 만듬.",
+    "memo": "7주간의 과업 : \n- OCR 실험 정리\nhttps://www.notion.so/OCR-KIE-3457d269eb39800b82a5fc0fc614410c\n\n해당 과업 중, key find / key solution\n1. EasyOCR의 detection 모델에서(craft_mlt_25k) 문제발생\n- 세로 글자를 인식하지 못하고, 가로로 읽어서 결과를 냄\n- 한 글자를 길쭉하게 bbox 침\n- 다른 영역에 가로로 침범함\n-> CRAFT 논문을 찾아보고, 구조를 분석하여 수평 Affinity에 강하게 편향된 것을 확인하였음.\n이렇게 설계된 모델 자체를 바꿀 수 없으니, 문제점 파악 후, 바로 다른 모델 테스트로 넘어감.\n\n2. PPSturctureV3를 찾아, 해당 파이프라인의 작동방식 및 세부 모델을 살펴보고 한국어 비즈니스 문서에 적용해봄. \nPPsturctureV3가 잘 작동하지 않는 문서였기에, det 모델과 rec 모델만 가지고 나옴\n\n3. PPsturctureV3나 pdf reader tool이 제공하는 레이아웃 정보 제공말고도, 어떻게 layout 정보를 효과적으로 추출하여 반영할 수 있을 지 생각하고 찾아보기 시작함. \n-> OpenCV , Morphology 를 접하고 공부\n-> 격자 추출의 경우 Opening 연산을 \"적당한\" kernel을 세팅하여 수행하면 글자는 사라지고 격자 구조만 남게되는 것을 확인함.\n-> PaddleOCR로 글자를 detect 하고, layout은 OpenCV의 Opening연산으로 추출하여 같은 Cell에 있는 bbox를 concat 하여 테두리가 있는 Excel 문서에 효과적으로 대응할 수 있게 만듬.",
     "updatedAt": "2026-05-14T08:09:06.858Z"
   },
   "builder/reader-excel": {
-    "memo": "[해결하지 못했지만 생각해봐야 하는 문제]
-
-
-연속된 글자가 병합되지 않고, 여러 셀에 나뉘어 담겨져있는 경우를 정확히 parsing 못함.
-
-왜냐하면, 현재 key기준 value hint를 받아 한 cell을 가져와 답을 내기 때문.
-
--> 실제 데이터셋에서도 해당 문제가 있을 것이기 때문에, 고려해야할 요소.
-",
+    "memo": "[해결하지 못했지만 생각해봐야 하는 문제]\n\n\n연속된 글자가 병합되지 않고, 여러 셀에 나뉘어 담겨져있는 경우를 정확히 parsing 못함.\n\n왜냐하면, 현재 key기준 value hint를 받아 한 cell을 가져와 답을 내기 때문.\n\n-> 실제 데이터셋에서도 해당 문제가 있을 것이기 때문에, 고려해야할 요소.\n",
     "updatedAt": "2026-05-14T08:14:44.978Z"
   },
   "builder/processing": {
-    "memo": "Anchor based search 제안,
-
-앞에서 전처리를 잘 해놓았기 때문에,
-Key 탐색은 잘되는 상태
-+ VR filtraion 방법이 세로 글자들을 detect 하거나, layout이 인쇄가 안된 양식에서 key 위치를 잡을 수 있도록 강력하게 작동하는 것을 확인. (현재도 pdf reader 실험 중에도 체감)
-
-Anchor based search에서
-생각 -> AI와 구현 -> 문제 발생 -> 해결할 수 있는 문제(EX. 중복 Key)/넘어가야 할 문제(EX. OCR 이슈) -> 해결 및 정리
-
-의 체계를 유지하며 코드를 주도적으로 발전 시킴
-
-https://www.notion.so/Key-Information-Extraction-3487d269eb39805c92e2c94a5fe7f6ba",
+    "memo": "Anchor based search 제안,\n\n앞에서 전처리를 잘 해놓았기 때문에,\nKey 탐색은 잘되는 상태\n+ VR filtraion 방법이 세로 글자들을 detect 하거나, layout이 인쇄가 안된 양식에서 key 위치를 잡을 수 있도록 강력하게 작동하는 것을 확인. (현재도 pdf reader 실험 중에도 체감)\n\nAnchor based search에서\n생각 -> AI와 구현 -> 문제 발생 -> 해결할 수 있는 문제(EX. 중복 Key)/넘어가야 할 문제(EX. OCR 이슈) -> 해결 및 정리\n\n의 체계를 유지하며 코드를 주도적으로 발전 시킴\n\nhttps://www.notion.so/Key-Information-Extraction-3487d269eb39805c92e2c94a5fe7f6ba",
     "updatedAt": "2026-05-14T08:31:23.212Z"
   },
   "builder/schema-initial": {
-    "memo": "지금까지 테스트한 코드들과 지식들을 기반으로,실제 서비스를 한다면 어떻게 서비스를 구현할 수 있을까 고민하여 M1/M2/M3/M4 시나리오로 나눔.
-
-이 시나리오를 나눌 때,
-지금까지 한 모든 과업을 회고하며 생각을 정리함.
-
-- 과제의 목표
-- 과제의 이유
-- 과제의 대상 및 범위
-- 과제의 대상 심층 분석 
--> 문서/코딩 관점에서의 Input 대상의 feature 분석
-
-1. Key 사전 정의 
-2. Key position Fix 
-3. Value position FIx 
-4. 문서 내 Key 존재
-5. Key로부터 Value 위치정보 Fix
-
-https://www.notion.so/Key-Value-Project-3597d269eb39805fb377d75b96a4d5f6",
+    "memo": "지금까지 테스트한 코드들과 지식들을 기반으로,실제 서비스를 한다면 어떻게 서비스를 구현할 수 있을까 고민하여 M1/M2/M3/M4 시나리오로 나눔.\n\n이 시나리오를 나눌 때,\n지금까지 한 모든 과업을 회고하며 생각을 정리함.\n\n- 과제의 목표\n- 과제의 이유\n- 과제의 대상 및 범위\n- 과제의 대상 심층 분석 \n-> 문서/코딩 관점에서의 Input 대상의 feature 분석\n\n1. Key 사전 정의 \n2. Key position Fix \n3. Value position FIx \n4. 문서 내 Key 존재\n5. Key로부터 Value 위치정보 Fix\n\nhttps://www.notion.so/Key-Value-Project-3597d269eb39805fb377d75b96a4d5f6",
     "updatedAt": "2026-05-14T08:27:50.124Z"
   },
   "builder/template-db-builder": {
-    "memo": "결과 브리핑
-
-https://www.notion.so/Key-Value-_-3607d269eb3980f985b5d1ebafcaa1f5
-",
+    "memo": "결과 브리핑\n\nhttps://www.notion.so/Key-Value-_-3607d269eb3980f985b5d1ebafcaa1f5\n",
     "updatedAt": "2026-05-14T08:30:24.322Z"
   }
 }</script>
